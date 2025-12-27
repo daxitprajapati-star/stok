@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="gu">
+<head>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1565c0">
+<meta charset="UTF-8">
+<title>સ્ટોક મેનેજમેન્ટ સિસ્ટમ</title>
+
+<style>
+body{font-family:"Noto Sans Gujarati";background:#f2f2f2;padding:20px}
+.menu{text-align:center;margin-bottom:20px}
+.menu button{padding:12px 20px;margin:5px;font-size:18px;border:none;background:#1565c0;color:#fff;border-radius:8px;cursor:pointer}
+.box{background:#fff;padding:20px;border-radius:10px;max-width:1200px;margin:auto;box-shadow:0 0 10px #aaa}
+h2{text-align:center;background:#c62828;color:#fff;padding:10px;border-radius:8px}
+input,select{padding:6px;font-size:15px}
+table{width:100%;border-collapse:collapse;margin-top:15px}
+th,td{border:1px solid #555;padding:6px;text-align:center}
+.hidden{display:none}
+.btn{padding:6px 12px;font-size:14px;border:none;border-radius:6px;color:#fff;cursor:pointer}
+.green{background:#2e7d32}
+.blue{background:#1565c0}
+.red{background:#c62828}
+.gray{background:#455a64}
+</style>
+</head>
+
+<body>
+<script>
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("service-worker.js");
+}
+</script>
+
+
+<div class="menu">
+<button onclick="showBox('daily')">Daily Stock Entry</button>
+<button onclick="showBox('add')">Stock Add</button>
+<button onclick="showBox('report')">Monthly Report</button>
+<button onclick="showBox('balance')">Stock Balance</button>
+</div>
+
+<!-- DAILY -->
+<div id="daily" class="box">
+<h2>Daily Stock Entry</h2>
+<label>તારીખ</label>
+<input type="date" id="dDate">
+
+<table>
+<thead>
+<tr>
+<th>સ્ટોક પ્રકાર</th>
+<th>શરૂ</th>
+<th>બંધ</th>
+<th>ડેડ</th>
+<th>કુલ વપરાશ</th>
+<th>વપરાશ</th>
+</tr>
+</thead>
+<tbody id="dailyTable"></tbody>
+</table>
+
+<button class="btn green" onclick="saveDaily()">Save</button>
+</div>
+
+<!-- ADD -->
+<div id="add" class="box hidden">
+<h2>Stock Add</h2>
+<input type="date" id="aDate"><br><br>
+<select id="aType"></select><br><br>
+<input type="number" id="aQty" placeholder="સ્ટોક ઉમેરો"><br><br>
+<button class="btn green" onclick="saveAdd()">Save</button>
+</div>
+
+<!-- REPORT -->
+<div id="report" class="box hidden">
+<h2>Monthly Report</h2>
+<input type="month" id="rMonth">
+<select id="rType"></select>
+<button class="btn blue" onclick="loadReport()">Filter</button>
+<button class="btn gray" onclick="printReport()">Print</button>
+<button class="btn green" onclick="exportExcel()">Excel</button>
+
+<table id="reportTable">
+<thead>
+<tr>
+<th>તારીખ</th>
+<th>કેટેગરી</th>
+<th>શરૂ</th>
+<th>બંધ</th>
+<th>કુલ</th>
+<th>વપરાશ</th>
+<th>Edit</th>
+<th>Delete</th>
+</tr>
+</thead>
+<tbody id="rTable"></tbody>
+</table>
+</div>
+
+<!-- BALANCE -->
+<div id="balance" class="box hidden">
+<h2>Stock Balance</h2>
+<table>
+<thead>
+<tr>
+<th>કેટેગરી</th>
+<th>ઉમેરેલ</th>
+<th>વપરાયેલ</th>
+<th>બેલેન્સ</th>
+</tr>
+</thead>
+<tbody id="bTable"></tbody>
+</table>
+</div>
+
+<script>
+const types=[
+"મુસાફર આઈ કાર્ડ","મુસાફર પાસ","વિદ્યાર્થી આઈ કાર્ડ",
+"વિદ્યાર્થી 1 માસ પાસ","વિદ્યાર્થી 3 માસ પાસ",
+"વિદ્યાર્થી સત્ર પાસ","રિજર્વેશન ટિકિટ"
+];
+
+const $=id=>document.getElementById(id);
+const get=k=>JSON.parse(localStorage.getItem(k)||"[]");
+const set=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
+
+function fill(id){
+let s=$(id); s.innerHTML='<option value="">All</option>';
+types.forEach(t=>s.innerHTML+=`<option>${t}</option>`);
+}
+fill("aType"); fill("rType");
+
+function loadDaily(){
+dailyTable.innerHTML="";
+types.forEach((t,i)=>{
+dailyTable.innerHTML+=`
+<tr>
+<td>${t}</td>
+<td><input id="s${i}" type="number"></td>
+<td><input id="e${i}" type="number"></td>
+<td><input id="d${i}" type="number" value="0"></td>
+<td><input id="t${i}" readonly></td>
+<td>
+<input type="checkbox" id="c${i}" style="display:none" onchange="calc(${i})"> વાપરસ
+<br>
+<input id="u${i}" readonly>
+</td>
+</tr>`;
+});
+}
+
+function calc(i){
+let s=+$("s"+i).value||0;
+let e=+$("e"+i).value||0;
+let d=+$("d"+i).value||0;
+let c=$("c"+i);
+
+let total=0,use=0;
+
+// e > s
+if(e>s){
+c.style.display="none";
+c.checked=false;
+total=(e-s)+1;
+use=Math.max(0,total-d);
+}
+
+// e == s
+else if(e===s && s>0){
+c.style.display="inline";
+if(c.checked){
+total=1;
+use=1;
+}else{
+total=0;
+use=0;
+}
+}
+
+// invalid
+else{
+c.style.display="none";
+c.checked=false;
+total=0;
+use=0;
+}
+
+$("t"+i).value=total;
+$("u"+i).value=use;
+}
+
+document.addEventListener("input",e=>{
+types.forEach((_,i)=>{
+["s"+i,"e"+i,"d"+i].includes(e.target.id)&&calc(i);
+});
+});
+
+/* AUTO START FROM PREVIOUS DAY */
+dDate.addEventListener("change",()=>{
+let d=get("daily");
+types.forEach((t,i)=>{
+let last=d.filter(x=>x.type==t).slice(-1)[0];
+if(last){
+$("s"+i).value = last.use>0 ? last.end+1 : last.end;
+}
+});
+});
+
+function saveDaily(){
+let d=get("daily");
+types.forEach((t,i)=>{
+if($("s"+i).value && $("e"+i).value){
+d.push({
+date:dDate.value,
+type:t,
+start:+$("s"+i).value,
+end:+$("e"+i).value,
+dead:+$("d"+i).value,
+total:+$("t"+i).value,
+use:+$("u"+i).value
+});
+}
+});
+set("daily",d);
+alert("Saved");
+}
+
+/* ADD */
+function saveAdd(){
+let a=get("add");
+a.push({date:aDate.value,type:aType.value,qty:+aQty.value});
+set("add",a);
+alert("Added");
+}
+
+/* REPORT */
+function loadReport(){
+let d=get("daily"),m=rMonth.value,t=rType.value;
+rTable.innerHTML="";
+d.forEach((x,i)=>{
+if((!m||x.date.startsWith(m)) && (!t||x.type==t)){
+rTable.innerHTML+=`
+<tr>
+<td>${x.date}</td>
+<td>${x.type}</td>
+<td>${x.start}</td>
+<td>${x.end}</td>
+<td>${x.total}</td>
+<td>${x.use}</td>
+<td><button class="btn blue" onclick="editDaily(${i})">Edit</button></td>
+<td><button class="btn red" onclick="deleteDaily(${i})">Delete</button></td>
+</tr>`;
+}
+});
+}
+
+function editDaily(i){
+let d=get("daily");
+let x=d[i];
+d.splice(i,1);
+set("daily",d);
+showBox("daily");
+dDate.value=x.date;
+let idx=types.indexOf(x.type);
+$("s"+idx).value=x.start;
+$("e"+idx).value=x.end;
+$("d"+idx).value=x.dead;
+calc(idx);
+}
+
+function deleteDaily(i){
+let d=get("daily");
+d.splice(i,1);
+set("daily",d);
+loadReport();
+}
+
+/* BALANCE */
+function loadBalance(){
+let a=get("add"),d=get("daily");
+bTable.innerHTML="";
+types.forEach(t=>{
+let ad=a.filter(x=>x.type==t).reduce((s,x)=>s+x.qty,0);
+let us=d.filter(x=>x.type==t).reduce((s,x)=>s+x.use,0);
+bTable.innerHTML+=`
+<tr>
+<td>${t}</td>
+<td>${ad}</td>
+<td>${us}</td>
+<td>${ad-us}</td>
+</tr>`;
+});
+}
+
+function printReport(){window.print();}
+function exportExcel(){
+let html=reportTable.outerHTML;
+let a=document.createElement("a");
+a.href='data:application/vnd.ms-excel,'+encodeURIComponent(html);
+a.download='monthly_report.xls';
+a.click();
+}
+
+function showBox(id){
+["daily","add","report","balance"].forEach(x=>$(x).classList.add("hidden"));
+$(id).classList.remove("hidden");
+if(id==="balance") loadBalance();
+}
+
+loadDaily();
+</script>
+
+</body>
+</html>
